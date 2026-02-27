@@ -1,0 +1,22 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.out
+*.toc
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+
+
+
+# Python virtual environment
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db

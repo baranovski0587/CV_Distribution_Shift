@@ -1,0 +1,214 @@
+\documentclass[11pt]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+
+% ---------- Macros ----------
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\cD}{\mathcal{D}}
+\newcommand{\cF}{\mathcal{F}}
+\newcommand{\cR}{\mathcal{R}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+
+% ---------- Theorem environments ----------
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+
+\title{Cross-Validation Under Regime Shifts}
+\author{Yegor Baranovski}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Problem statement}
+Many prediction problems involve data collected across multiple regimes (e.g., time periods or macroeconomic
+conditions). In such settings, the joint distribution of $(X,Y)$ may change across regimes, so observations are not
+identically distributed over the full sample. Nevertheless, standard cross-validation (especially random $K$-fold CV)
+is typically justified under i.i.d./exchangeability-type assumptions. When regimes are mixed across folds, CV can
+estimate the wrong generalization target, leading to optimistic performance estimates, unstable hyperparameter
+selection, and even qualitative failures such as coefficient sign flips across time.
+
+
+
+\section{Deployment objectives under regime shift}
+When data arise from multiple regimes, the phrase ``best model'' is ambiguous without specifying a deployment
+objective. Three common targets are:
+\begin{enumerate}
+  \item \textbf{Regime-specific deployment:} choose a model that performs best on a particular regime of interest
+  (often a future regime).
+  \item \textbf{Robust deployment:} choose a model that performs well across regimes, e.g., by minimizing the worst-case
+  risk over regimes.
+  \item \textbf{Mixture deployment:} choose a model that performs best under a specified mixture of regimes, reflecting
+  anticipated deployment frequencies.
+\end{enumerate}
+Here, we will focus on the \emph{regime-specific deployment} objective. This choice yields a clean
+mathematical target (train on past regimes, deploy on a designated regime) and matches common practice in
+applications where models are trained on historical data and deployed in a specific future period.
+
+
+
+
+\section{Setup and goal}
+
+\paragraph{Training and deployment distributions.}
+Let $(\mathcal X,\mathcal B_{\mathcal X})$ and $(\mathcal Y,\mathcal B_{\mathcal Y})$ be measurable spaces,
+and for each $r$ let $\cD_r$ be a probability measure on
+$(\mathcal X\times\mathcal Y,\ \mathcal B_{\mathcal X}\otimes\mathcal B_{\mathcal Y})$.
+We observe $T$ data points indexed by $t=1,\dots,T$.
+Regimes are indexed by $r\in\{1,\dots,R\}$ with known, non-overlapping boundaries:
+regime~$r$ occupies consecutive time points
+$\mathcal T_r = \{\tau_{r-1}+1,\dots,\tau_r\}$,
+where $0=\tau_0 < \tau_1 < \cdots < \tau_R = T$.
+Let $n_r = |\mathcal T_r| = \tau_r - \tau_{r-1}$.
+Within regime~$r$, observations are i.i.d.:
+$(X_t,Y_t) \stackrel{\text{i.i.d.}}{\sim} \cD_r$ for $t\in\mathcal T_r$,
+with $\cD_r \neq \cD_s$ generally.
+We write $S_r = \{(X_t,Y_t) : t\in\mathcal T_r\}$ for the sample from regime~$r$.
+Throughout, we assume that the regime boundaries $\tau_0,\dots,\tau_R$ and the number of
+regimes $R$ are known or are decided by the analyst. When regime membership is latent, it must first be
+estimated, e.g., via structural break detection \mbox{(Bai \& Perron, 1998)} or hidden Markov
+models \mbox{(Hamilton, 1989)}; we treat this as a separate, upstream inference problem and
+do not address it here.
+
+\paragraph{Sampling across regimes.}
+All random variables are defined on a common probability space $(\Omega,\mathcal F,\mathbb P)$.
+The samples $\{S_r\}_{r=1}^R$ are mutually independent across regimes.
+Fix an index set $I\subseteq\{1,\dots,R-1\}$ corresponding to training regimes, and define the
+(training) mixture distribution
+\[
+Q \;:=\; \sum_{r\in I} w_r \cD_r,
+\qquad
+w_r \;:=\; \frac{n_r}{\sum_{j\in I} n_j}.
+\]
+Let $P$ denote the deployment distribution (typically $P=\cD_R$).
+Note that the weights $w_r$ are proportional to the regime sample sizes, so $Q$ is the empirical
+training distribution that a learner actually encounters when pooling all training data. Alternative
+weighting schemes (e.g., uniform $w_r=1/|I|$) define different mixture targets and may be preferable
+when regime sample sizes are unbalanced or when equal importance across regimes is desired.
+
+\paragraph{Prediction space, loss, and hypothesis classes.}
+Let $(\mathcal A,\mathcal B_{\mathcal A})$ be a measurable prediction space.
+Let $\ell:(\mathcal A\times\mathcal Y,\ \mathcal B_{\mathcal A}\otimes\mathcal B_{\mathcal Y})\to\R$ be measurable.
+Let $\Lambda$ be a set of hyperparameters and let $\{\cF_\lambda\}_{\lambda\in\Lambda}$ be hypothesis classes with
+$\cF_\lambda \subseteq \{f:(\mathcal X,\mathcal B_{\mathcal X})\to(\mathcal A,\mathcal B_{\mathcal A})\text{ measurable}\}$.
+
+
+\paragraph{Existence and integrability.}
+For each $\lambda\in\Lambda$, every $f\in\cF_\lambda$ is measurable $(\mathcal X,\mathcal B_{\mathcal X})\to(\mathcal A,\mathcal B_{\mathcal A})$
+and
+$\E_{(X,Y)\sim Q}\!\big[|\ell(f(X),Y)|\big]<\infty$.
+Assume that for each $\lambda\in\Lambda$ the set
+\[
+\argmin_{f\in\cF_\lambda}\; \E_{(X,Y)\sim Q}\big[\ell(f(X),Y)\big]
+\]
+is nonempty; fix any element and denote it by $f^\star_{\lambda,Q}$.
+Moreover, assume that for each $\lambda\in\Lambda$,
+\[
+\E_{(X,Y)\sim P}\!\big[|\ell(f^\star_{\lambda,Q}(X),Y)|\big]<\infty.
+\]
+
+\paragraph{Deployment risk and oracle hyperparameter.}
+Define the deployment risk
+\[
+\cR(\lambda;\,Q\to P)
+:= \E_{(X,Y)\sim P}\big[\ell(f^\star_{\lambda,Q}(X),Y)\big],
+\tag{D1}
+\]
+and any oracle hyperparameter
+\[
+\lambda^\star \in \argmin_{\lambda\in\Lambda}\ \cR(\lambda;\,Q\to P).
+\tag{D2}
+\]
+
+
+
+
+
+\paragraph{Example: regularized linear regression.}
+For a linear model family, each $\lambda$ corresponds to a regularization strength.
+For each $\lambda$, we fit coefficients by minimizing (regularized) training loss on the
+training mixture $Q$, yielding $f^\star_{\lambda,Q}$. We then select the $\lambda$ whose
+resulting model has the smallest expected loss on the deployment regime $P$ -- estimated
+via a regime-aware cross-validation procedure.
+
+\paragraph{Other performance metrics.}
+The formulation above uses a pointwise loss $\ell$ so that risk is an expectation under $P$.
+Many evaluation criteria in practice (e.g., AUC, F1, profit/utility) are not of this form; in such cases we
+either (i) replace $\ell$ by an appropriate surrogate loss whose minimizer targets the desired metric, or (ii) define a metric functional $\mathcal{M}(f;P)$ and select $\lambda$ by minimizing an empirical estimate
+$\widehat{\mathcal{M}}(\hat f_{\lambda,S_{\mathrm{train}}};P)$ computed on held-out regimes using the same
+regime-aware splitting scheme.
+
+
+
+\section{Comparison to Temporal CV}
+
+Temporal cross-validation respects the time-ordering of regimes: at each fold, we train on
+past regimes and validate on a future regime. We now show that temporal CV targets a
+historical average of next-block risks, which generally differs from the deployment risk
+$\cR(\lambda; Q \to P)$.
+
+\paragraph{Temporal CV procedure.}
+Suppose we have $K$ folds indexed by $k = 1, \dots, K$. At fold $k$, let $I_k \subset \{1, \dots, R-1\}$
+denote the set of training regimes and let $v_k \in \{2, \dots, R\}$ denote the validation regime,
+where $\max(I_k) < v_k$ (training regimes precede validation). Define the fold-$k$ training set
+$S^{(k)}_{\mathrm{train}} := \bigcup_{r \in I_k} S_r$ and let $\hat f_{\lambda, S^{(k)}_{\mathrm{train}}}$
+denote the fitted model. The temporal CV estimator is
+\[
+\widehat{\mathrm{CV}}_{\mathrm{temp}}(\lambda)
+\;:=\;
+\frac{1}{K} \sum_{k=1}^{K}
+\underbrace{\frac{1}{n_{v_k}} \sum_{t\in\mathcal T_{v_k}}
+\ell\bigl(\hat f_{\lambda, S^{(k)}_{\mathrm{train}}}(X_{t}),\, Y_{t}\bigr)}_{\displaystyle =:\; \widehat{\cR}_k(\lambda)}.
+\]
+
+\paragraph{Common temporal CV schemes.}
+Two standard choices for $(I_k, v_k)$ are:
+\begin{itemize}
+  \item \textbf{Expanding window:} $I_k = \{1, \dots, k\}$ and $v_k = k+1$. Training accumulates all
+  past regimes.
+  \item \textbf{Sliding window (width $w$):} $I_k = \{k, \dots, k+w-1\}$ and $v_k = k+w$. Training
+  uses only the $w$ most recent regimes before validation.
+\end{itemize}
+Both schemes respect temporal ordering, but they induce different training distributions at each fold.
+For expanding window, $k = 1, \dots, R-1$ so $K = R-1$; for sliding window of width $w$,
+$k = 1, \dots, R-w$ so $K = R-w$.
+
+\paragraph{Population target of temporal CV.}
+For each fold $k$, define the fold-$k$ training mixture
+\[
+Q^{(k)} \;:=\; \sum_{r \in I_k} w_r^{(k)} \cD_r,
+\qquad
+w_r^{(k)} \;:=\; \frac{n_r}{\sum_{j \in I_k} n_j},
+\]
+and let $f^\star_{\lambda, Q^{(k)}}$ denote the population risk minimizer trained on $Q^{(k)}$.
+The population target of temporal CV is
+\[
+\overline{\mathrm{CV}}_{\mathrm{temp}}(\lambda)
+\;:=\;
+\frac{1}{K} \sum_{k=1}^{K} \cR(\lambda;\, Q^{(k)} \to \cD_{v_k}),
+\]
+where $\cR(\lambda; Q^{(k)} \to \cD_{v_k}) := \E_{(X,Y) \sim \cD_{v_k}}[\ell(f^\star_{\lambda, Q^{(k)}}(X), Y)]$.
+By standard arguments (the law of large numbers applied to validation losses, with training and
+validation regimes independent), temporal CV converges to this target as sample sizes grow.
+
+\paragraph{When does the mismatch matter?}
+The gap between $\overline{\mathrm{CV}}_{\mathrm{temp}}(\lambda)$ and
+$\cR(\lambda;\,Q\to P)$ depends on the dynamics of the regime process.
+If regimes are drawn i.i.d.\ from a stationary distribution, then
+the validation distributions $\cD_{v_k}$ are exchangeable and temporal CV
+targets an average risk that is already a natural pre-deployment objective;
+in this case the mismatch is benign.
+The distinction becomes consequential when regimes exhibit
+\emph{persistence}: if the current regime is informative about the next,
+the deployment distribution $P$ is partially predictable from recent
+regime history, and a CV procedure that ignores this structure
+systematically mis-weights its validation evidence.
+The regime-aware procedure developed below is therefore most relevant in
+the persistent-regime setting.
+
+
+\end{document}
